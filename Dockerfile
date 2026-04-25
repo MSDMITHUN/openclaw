@@ -57,4 +57,4 @@ USER node
 
 EXPOSE 18789
 
-CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+CMD ["sh", "-c", "node openclaw.mjs gateway --allow-unconfigured --port=$PORT --bind=lan"]
