@@ -1,26 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-ARG OPENCLAW_EXTENSIONS=""
-ARG OPENCLAW_VARIANT=default
-ARG OPENCLAW_BUNDLED_PLUGIN_DIR=extensions
-ARG OPENCLAW_DOCKER_APT_UPGRADE=1
-
-FROM node:24-bookworm AS ext-deps
-ARG OPENCLAW_EXTENSIONS
-ARG OPENCLAW_BUNDLED_PLUGIN_DIR
-
-RUN --mount=type=bind,source=${OPENCLAW_BUNDLED_PLUGIN_DIR},target=/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR},readonly \
-    mkdir -p /out && \
-    for ext in $OPENCLAW_EXTENSIONS; do \
-      if [ -f "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}/$ext/package.json" ]; then \
-        mkdir -p "/out/$ext" && \
-        cp "/tmp/${OPENCLAW_BUNDLED_PLUGIN_DIR}/$ext/package.json" "/out/$ext/package.json"; \
-      fi; \
-    done
-
-# ---------- BUILD ----------
 FROM node:24-bookworm AS build
 
+# Install bun (required)
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
@@ -28,33 +10,36 @@ RUN corepack enable
 
 WORKDIR /app
 
+# Copy files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY . .
 
-# ✅ FIXED CACHE (pnpm)
-RUN --mount=type=cache,id=pnpm-cache,target=/root/.local/share/pnpm/store \
-    NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
+# Install dependencies (NO cache mounts)
+RUN NODE_OPTIONS=--max-old-space-size=2048 pnpm install --frozen-lockfile
 
+# Build
 RUN pnpm build:docker
 RUN pnpm ui:build
 
-# ---------- RUNTIME ----------
+# ---------- Runtime ----------
 FROM node:24-bookworm-slim
 
 WORKDIR /app
 
-# ✅ FIXED CACHE (apt)
-RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt \
-    --mount=type=cache,id=apt-lib,target=/var/lib/apt \
-    apt-get update && apt-get install -y --no-install-recommends \
+# Install required packages (NO cache mounts)
+RUN apt-get update && apt-get install -y \
     curl git openssl && rm -rf /var/lib/apt/lists/*
 
+# Copy built app
 COPY --from=build /app /app
 
 ENV NODE_ENV=production
 
+# Use non-root user
 USER node
 
+# Expose port
 EXPOSE 18789
 
+# Start server (Railway compatible)
 CMD ["sh", "-c", "node openclaw.mjs gateway --allow-unconfigured --port=$PORT --bind=lan"]
