@@ -42,4 +42,4 @@ USER node
 EXPOSE 18789
 
 # Start server (Railway compatible)
-CMD ["sh", "-c", "node openclaw.mjs gateway --allow-unconfigured --port=$PORT --bind=lan"]
+CMD ["sh", "-c", "node openclaw.mjs gateway --allow-unconfigured --port=$PORT --bind=lan --control-ui-allowed-origins=*"]
